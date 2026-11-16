@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biobank SQL playground</title>
+<style>
+  :root { --bg:#f8f8f6; --fg:#1c2124; --muted:#5f686d; --card:#fff; --line:#dde1e3; --accent:#2b5f8a; --accent-soft:#e3edf5; --code:#f2f4f5; --err:#a8322d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#131619; --fg:#e4e8ea; --muted:#99a3a8; --card:#1b1f23; --line:#2d3338; --accent:#6fa8d8; --accent-soft:#1f3142; --code:#22272c; --err:#f08a84; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:1200px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; } h2 { font-size:1rem; margin:0 0 8px; }
+  .lead { color:var(--muted); margin:0 0 18px; }
+  .layout { display:grid; grid-template-columns: 300px 1fr; gap:14px; }
+  @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0; }
+  .qlist button { display:block; width:100%; text-align:left; background:none; border:0; border-radius:8px; padding:7px 8px; color:var(--fg); font:inherit; font-size:13.5px; cursor:pointer; }
+  .qlist button:hover, .qlist button.active { background:var(--accent-soft); }
+  .qlist b { color:var(--accent); font-variant-numeric: tabular-nums; margin-right:4px; }
+  details { margin-top:14px; font-size:13px; } summary { cursor:pointer; font-weight:600; }
+  details ul { margin:6px 0 0; padding-left:16px; } details li { margin:2px 0; }
+  .cols { color:var(--muted); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  textarea { width:100%; min-height:260px; font:13px/1.45 ui-monospace, Menlo, Consolas, monospace; background:var(--code); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px; resize:vertical; tab-size:4; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+  .btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
+  .btn:disabled { opacity:.5; }
+  #meta { color:var(--muted); font-size:13px; }
+  #error { color:var(--err); font-family:ui-monospace, monospace; font-size:13px; white-space:pre-wrap; }
+  .result { overflow:auto; max-height:520px; border:1px solid var(--line); border-radius:8px; }
+  table { border-collapse:collapse; font-size:13px; width:100%; }
+  th { position:sticky; top:0; background:var(--card); border-bottom:2px solid var(--line); }
+  th, td { padding:5px 9px; text-align:left; white-space:nowrap; border-bottom:1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td.null { color:var(--muted); font-style:italic; }
+  .question { font-weight:600; margin:0 0 4px; } .concepts { color:var(--muted); font-size:13px; margin:0 0 6px; }
+  a { color:var(--accent); }
+  kbd { font-size:12px; border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Genomics biobank: SQL playground</h1>
+  <p class="lead">A real SQLite database (synthetic data: 5 species, ~10,000 TE copies, ~950 individuals, ~70,000 genotype calls) running in your browser. Pick a question on the left or write your own query. Source: <a href="https://github.com/liuweisu/genomics-biobank-sql">github.com/liuweisu/genomics-biobank-sql</a></p>
+  <div class="layout">
+    <aside class="card">
+      <h2>Questions</h2>
+      <div class="qlist" id="qlist">Loading…</div>
+      <details open><summary>Tables</summary><ul id="tables"></ul></details>
+    </aside>
+    <section class="card">
+      <p class="question" id="question">Loading the database…</p>
+      <p class="concepts" id="concepts"></p>
+      <textarea id="sql" spellcheck="false" aria-label="SQL query"></textarea>
+      <div class="row">
+        <button class="btn" id="run" disabled>Run</button>
+        <span id="meta"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the query. Changes only live in this tab.</span>
+      </div>
+      <div id="error"></div>
+      <div class="result" id="result"></div>
+    </section>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let db, queries = [];
+
+const esc = (v) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+function render(res) {
+  if (!res.length) { $("result").innerHTML = "<p style='padding:10px'>Query ran; no rows returned.</p>"; return 0; }
+  const { columns, values } = res[res.length - 1];
+  const shown = values.slice(0, 1000);
+  $("result").innerHTML = `<table><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
+    shown.map((r) => `<tr>${r.map((v) => v === null ? `<td class="null">NULL</td>` : `<td>${esc(typeof v === "number" && !Number.isInteger(v) ? +v.toFixed(4) : v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  return values.length;
+}
+
+function run() {
+  $("error").textContent = "";
+  const t0 = performance.now();
+  try {
+    const res = db.exec($("sql").value);
+    const n = render(res);
+    $("meta").textContent = `${n.toLocaleString()} row${n === 1 ? "" : "s"}${n > 1000 ? " (first 1,000 shown)" : ""} in ${(performance.now() - t0).toFixed(0)} ms`;
+  } catch (e) { $("error").textContent = e.message; $("result").innerHTML = ""; }
+}
+
+function select(i) {
+  const q = queries[i];
+  document.querySelectorAll(".qlist button").forEach((b, j) => b.classList.toggle("active", i === j));
+  const lines = q.sql.split("\n");
+  const header = [];
+  while (lines.length && lines[0].startsWith("--")) header.push(lines.shift().replace(/^--\s?/, ""));
+  const text = header.join(" ").replace(/\s+/g, " ");
+  const [question, concepts] = text.split(/Concepts:/);
+  $("question").textContent = question.replace("Question:", "").trim();
+  $("concepts").textContent = concepts ? "SQL used: " + concepts.trim() : "";
+  $("sql").value = lines.join("\n").trim();
+  run();
+}
+
+async function boot() {
+  const SQL = await initSqlJs({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${f}` });
+  const [buf, manifest] = await Promise.all([
+    fetch("biobank.db").then((r) => r.arrayBuffer()),
+    fetch("queries.json").then((r) => r.json()),
+  ]);
+  db = new SQL.Database(new Uint8Array(buf));
+  queries = manifest;
+  $("qlist").innerHTML = queries.map((q, i) => {
+    const header = q.sql.split("\n").filter((l) => l.startsWith("--")).map((l) => l.slice(2).trim()).join(" ");
+    const title = header.split("Concepts:")[0].replace("Question:", "").trim();
+    return `<button data-i="${i}"><b>${q.name.slice(0, 2)}</b>${esc(title.length > 70 ? title.slice(0, 68) + "…" : title)}</button>`;
+  }).join("");
+  document.querySelectorAll(".qlist button").forEach((b) => b.onclick = () => select(+b.dataset.i));
+  const tables = db.exec("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name")[0].values;
+  $("tables").innerHTML = tables.map(([name, type]) => {
+    const cols = db.exec(`PRAGMA table_info(${name})`)[0].values.map((c) => c[1]).join(", ");
+    const n = db.exec(`SELECT COUNT(*) FROM ${name}`)[0].values[0][0];
+    return `<li><b>${name}</b>${type === "view" ? " (view)" : ""} · ${n.toLocaleString()} rows<div class="cols">${cols}</div></li>`;
+  }).join("");
+  $("run").disabled = false;
+  select(0);
+}
+
+$("run").onclick = run;
+$("sql").addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); } });
+boot().catch((e) => { $("question").textContent = "Could not load the database: " + e; });
+</script>
+</body>
+</html>
