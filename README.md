@@ -3,6 +3,8 @@
 [![CI](https://github.com/liuweisu/genomics-biobank-sql/actions/workflows/ci.yml/badge.svg)](https://github.com/liuweisu/genomics-biobank-sql/actions/workflows/ci.yml)
 **[Try the SQL playground in your browser](https://liuweisu.github.io/genomics-biobank-sql/)**
 
+> **About this repository.** This is a showcase of work I did during my studies at Wageningen University & Research (WUR). The original research and course code lives on WUR's internal GitLab and is not public. The code here was rebuilt quickly with help from Claude, an AI assistant, to show the methods and results; it is not the original thesis or course code.
+
 A relational database for a genomics lab: reference genomes and their transposable element (TE) annotations on one side, a biobank of people, plants and bacterial isolates with their samples, sequencing runs and genotype calls on the other. Twelve SQL queries answer real questions about it.
 
 During my minor I designed a database as a course project: model the domain, find the relations, then extract information with SQL. This is that exercise again, applied to the field I work in.
